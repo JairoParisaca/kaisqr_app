@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../sala/controllers/sala_controller.dart';
 import '../controllers/capture_controller.dart';
 import '../models/documento_capturado.dart';
+import 'camera_capture_view.dart';
 
 class CaptureView extends StatefulWidget {
   const CaptureView({
@@ -30,6 +33,7 @@ class _CaptureViewState extends State<CaptureView> {
       salaController: widget.salaController,
     );
     _captureController.addListener(_actualizarVista);
+    unawaited(_captureController.recuperarCapturaPendiente());
   }
 
   @override
@@ -65,9 +69,7 @@ class _CaptureViewState extends State<CaptureView> {
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: _captureController.enviando
-                      ? null
-                      : _captureController.capturarDocumento,
+                  onPressed: _captureController.enviando ? null : _abrirCamara,
                   icon: const Icon(Icons.camera_alt_outlined),
                   label: const Text('Cámara'),
                 ),
@@ -221,5 +223,14 @@ class _CaptureViewState extends State<CaptureView> {
 
   void _actualizarVista() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _abrirCamara() async {
+    final imagen = await Navigator.of(context).push<XFile>(
+      MaterialPageRoute<XFile>(builder: (_) => const CameraCaptureView()),
+    );
+
+    if (!mounted || imagen == null) return;
+    _captureController.agregarImagen(imagen);
   }
 }

@@ -13,11 +13,11 @@ class AppConfig {
     return const AppConfig(
       apiUrl: String.fromEnvironment(
         'KAISQR_API_URL',
-        defaultValue: 'http://192.168.88.87:8000/api/v1',
+        defaultValue: 'http://192.168.88.85:8000/api/v1',
       ),
       webSocketUrl: String.fromEnvironment(
         'KAISQR_WS_URL',
-        defaultValue: 'ws://192.168.88.87:8000/api/v1/ws/v1',
+        defaultValue: 'ws://192.168.88.85:8000/api/v1/ws/v1',
       ),
       apiKey: String.fromEnvironment(
         'KAISQR_API_KEY',

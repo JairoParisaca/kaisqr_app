@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/evento_sala.dart';
 import '../models/sala.dart';
 import '../services/sala_service.dart';
 
-class SalaController extends ChangeNotifier {
-  SalaController(this._salaService);
+class SalaController extends ChangeNotifier with WidgetsBindingObserver {
+  SalaController(this._salaService) {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   final SalaService _salaService;
   StreamSubscription<EventoSala>? _eventSubscription;
@@ -19,6 +21,8 @@ class SalaController extends ChangeNotifier {
   String mensajeEstado = 'Ingresa un código o escanea un QR para comenzar.';
   String? mensajeError;
   int cantidadDocumentos = 0;
+  bool _reconectando = false;
+  bool _saliendo = false;
 
   bool get salaConectada => salaActual != null;
 
@@ -37,6 +41,49 @@ class SalaController extends ChangeNotifier {
 
   Future<void> unirsePorQr(String contenidoQr) async {
     await _ejecutarIngreso(() async => _salaService.unirsePorQr(contenidoQr));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && salaActual != null) {
+      unawaited(reconectarSala());
+    }
+  }
+
+  Future<void> reconectarSala() async {
+    final sala = salaActual;
+    if (sala == null || _reconectando || _saliendo) return;
+
+    _reconectando = true;
+    try {
+      await _eventSubscription?.cancel();
+      _eventSubscription = null;
+      await _salaService.cerrarSala();
+
+      final eventos = await _salaService.conectarSala(sala);
+      _eventSubscription = eventos.listen(
+        _procesarEvento,
+        onError: (Object error) {
+          mensajeError = _obtenerMensajeError(error);
+          mensajeEstado = 'La conexión de la sala tuvo un problema.';
+          notifyListeners();
+        },
+        onDone: () {
+          if (!_saliendo && salaActual != null) {
+            mensajeEstado = 'Conexión temporalmente interrumpida.';
+            notifyListeners();
+          }
+        },
+      );
+      mensajeError = null;
+      mensajeEstado = 'Sala reconectada. Puedes continuar capturando.';
+    } catch (error) {
+      mensajeError = _obtenerMensajeError(error);
+      mensajeEstado = 'No fue posible reconectar la sala.';
+    } finally {
+      _reconectando = false;
+      notifyListeners();
+    }
   }
 
   Future<void> enviarDocumento(
@@ -85,6 +132,7 @@ class SalaController extends ChangeNotifier {
 
   Future<void> salirSala() async {
     if (salaActual == null && _eventSubscription == null) return;
+    _saliendo = true;
     await _eventSubscription?.cancel();
     _eventSubscription = null;
     await _salaService.cerrarSala();
@@ -92,6 +140,7 @@ class SalaController extends ChangeNotifier {
     cantidadDocumentos = 0;
     mensajeEstado = 'Sala cerrada.';
     notifyListeners();
+    _saliendo = false;
   }
 
   Future<void> _ejecutarIngreso(Future<Sala> Function() ingresar) async {
@@ -104,12 +153,19 @@ class SalaController extends ChangeNotifier {
       await _eventSubscription?.cancel();
       final sala = await ingresar();
       salaActual = sala;
+      _saliendo = false;
       final eventos = await _salaService.conectarSala(sala);
       _eventSubscription = eventos.listen(
         _procesarEvento,
         onError: (Object error) {
           mensajeError = _obtenerMensajeError(error);
           notifyListeners();
+        },
+        onDone: () {
+          if (!_saliendo && salaActual != null) {
+            mensajeEstado = 'Conexión temporalmente interrumpida.';
+            notifyListeners();
+          }
         },
       );
       mensajeEstado = 'Conectado. Esperando documentos.';
@@ -142,6 +198,7 @@ class SalaController extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_eventSubscription?.cancel());
     unawaited(_salaService.cerrarSala());
     super.dispose();

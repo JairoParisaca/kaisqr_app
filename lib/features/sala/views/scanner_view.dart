@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -8,12 +10,33 @@ class ScannerView extends StatefulWidget {
   State<ScannerView> createState() => _ScannerViewState();
 }
 
-class _ScannerViewState extends State<ScannerView> {
-  final MobileScannerController _scannerController = MobileScannerController();
+class _ScannerViewState extends State<ScannerView> with WidgetsBindingObserver {
+  final MobileScannerController _scannerController = MobileScannerController(
+    autoStart: false,
+  );
   bool _codigoDetectado = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_iniciarScanner());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive) {
+      if (_scannerController.value.isRunning) {
+        unawaited(_scannerController.stop());
+      }
+    } else if (state == AppLifecycleState.resumed && !_codigoDetectado) {
+      unawaited(_iniciarScanner());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scannerController.dispose();
     super.dispose();
   }
@@ -84,8 +107,29 @@ class _ScannerViewState extends State<ScannerView> {
 
       _codigoDetectado = true;
       setState(() {});
-      Navigator.of(context).pop(contenido);
+      unawaited(_cerrarTrasLectura(contenido));
       return;
+    }
+  }
+
+  Future<void> _cerrarTrasLectura(String contenido) async {
+    if (_scannerController.value.isRunning) {
+      await _scannerController.stop();
+    }
+    if (mounted) Navigator.of(context).pop(contenido);
+  }
+
+  Future<void> _iniciarScanner() async {
+    if (_codigoDetectado ||
+        _scannerController.value.isRunning ||
+        _scannerController.value.isStarting) {
+      return;
+    }
+
+    try {
+      await _scannerController.start();
+    } on MobileScannerException {
+      // Una transición de ciclo de vida no debe dejar una excepción sin atender.
     }
   }
 }
