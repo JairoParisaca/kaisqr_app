@@ -34,14 +34,29 @@ class ApiClient {
     required String path,
     required File file,
     required String sessionToken,
+    String tipoArchivo = 'imagen',
+    List<Map<String, double>>? poligono,
     String? personalizedName,
+    String? lotePdfId,
+    String? nombrePdf,
   }) async {
     final request = http.MultipartRequest('POST', _buildUri(path))
       ..headers['X-Session-Token'] = sessionToken
+      ..fields['tipo_archivo'] = tipoArchivo
       ..files.add(await http.MultipartFile.fromPath('archivo', file.path));
+
+    if (poligono != null && poligono.isNotEmpty) {
+      request.fields['poligono'] = jsonEncode(poligono);
+    }
 
     if (personalizedName != null && personalizedName.trim().isNotEmpty) {
       request.fields['nombre_personalizado'] = personalizedName.trim();
+    }
+    if (lotePdfId != null && lotePdfId.trim().isNotEmpty) {
+      request.fields['lote_pdf_id'] = lotePdfId.trim();
+    }
+    if (nombrePdf != null && nombrePdf.trim().isNotEmpty) {
+      request.fields['nombre_pdf'] = nombrePdf.trim();
     }
 
     final response = await _client.send(request);

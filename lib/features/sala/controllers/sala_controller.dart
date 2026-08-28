@@ -88,7 +88,11 @@ class SalaController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> enviarDocumento(
     File archivo, {
+    String tipoArchivo = 'imagen',
+    List<Map<String, double>>? poligono,
     String? nombrePersonalizado,
+    String? lotePdfId,
+    String? nombrePdf,
   }) async {
     final sala = salaActual;
     if (sala == null) throw StateError('No existe una sala activa');
@@ -96,7 +100,11 @@ class SalaController extends ChangeNotifier with WidgetsBindingObserver {
     await _salaService.registrarDocumento(
       sala: sala,
       archivo: archivo,
+      tipoArchivo: tipoArchivo,
+      poligono: poligono,
       nombrePersonalizado: nombrePersonalizado,
+      lotePdfId: lotePdfId,
+      nombrePdf: nombrePdf,
     );
     cantidadDocumentos += 1;
     mensajeEstado = 'Documento enviado ($cantidadDocumentos).';

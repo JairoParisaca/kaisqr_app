@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../captura/views/camera_capture_view.dart';
 import '../controllers/sala_controller.dart';
 import '../services/sala_service.dart';
 import 'sala_view.dart';
@@ -17,12 +21,15 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> {
   late final SalaController _salaController;
   final TextEditingController _codigoController = TextEditingController();
+  final FocusNode _codigoFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _salaController = SalaController(widget.salaService);
     _salaController.addListener(_actualizarVista);
+    _codigoFocusNode.addListener(_actualizarVista);
+    unawaited(CameraCaptureView.precargarCamaras());
   }
 
   @override
@@ -30,6 +37,9 @@ class _HomeViewState extends State<HomeView> {
     _salaController.removeListener(_actualizarVista);
     _salaController.dispose();
     _codigoController.dispose();
+    _codigoFocusNode
+      ..removeListener(_actualizarVista)
+      ..dispose();
     super.dispose();
   }
 
@@ -121,22 +131,7 @@ class _HomeViewState extends State<HomeView> {
                   ?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: 20),
-            TextField(
-              controller: _codigoController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 8,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Código de sala',
-                counterText: '',
-                hintText: '000000',
-              ),
-            ),
+            _buildCodigoInput(context),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _salaController.cargando ? null : _conectarPorCodigo,
@@ -167,6 +162,105 @@ class _HomeViewState extends State<HomeView> {
               _buildError(_salaController.mensajeError!),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCodigoInput(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final codigo = _codigoController.text;
+
+    return Semantics(
+      label: 'Código de sala de seis dígitos',
+      textField: true,
+      child: GestureDetector(
+        onTap: _codigoFocusNode.requestFocus,
+        child: SizedBox(
+          height: 64,
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              Row(
+                children: List<Widget>.generate(
+                  6,
+                  (indice) => Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: indice == 5 ? 0 : 8),
+                      child: _buildDigitoCodigo(
+                        indice: indice,
+                        codigo: codigo,
+                        colorScheme: colorScheme,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              TextField(
+                controller: _codigoController,
+                focusNode: _codigoFocusNode,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                maxLength: 6,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) {
+                  if (_codigoController.text.length == 6) {
+                    _conectarPorCodigo();
+                  }
+                },
+                showCursor: false,
+                style: const TextStyle(
+                  color: Colors.transparent,
+                  fontSize: 1,
+                ),
+                cursorColor: Colors.transparent,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  counterText: '',
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDigitoCodigo({
+    required int indice,
+    required String codigo,
+    required ColorScheme colorScheme,
+  }) {
+    final tieneValor = indice < codigo.length;
+    final esActivo = _codigoFocusNode.hasFocus &&
+        (indice == codigo.length || (codigo.length == 6 && indice == 5));
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      height: 58,
+      decoration: BoxDecoration(
+        color: tieneValor
+            ? colorScheme.primaryContainer
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: esActivo ? colorScheme.primary : Colors.transparent,
+          width: esActivo ? 2 : 1,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          tieneValor ? codigo[indice] : '•',
+          style: TextStyle(
+            color: tieneValor ? colorScheme.primary : Colors.black26,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );

@@ -4,18 +4,42 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 class CameraCaptureView extends StatefulWidget {
-  const CameraCaptureView({super.key});
+  const CameraCaptureView({
+    this.titulo = 'Capturar documento',
+    this.permitirVarias = false,
+    super.key,
+  });
+
+  final String titulo;
+  final bool permitirVarias;
 
   @override
   State<CameraCaptureView> createState() => _CameraCaptureViewState();
+
+  static Future<void> precargarCamaras() {
+    return _CameraCaptureViewState.precargarCamaras();
+  }
 }
 
 class _CameraCaptureViewState extends State<CameraCaptureView>
     with WidgetsBindingObserver {
+  static Future<List<CameraDescription>>? _camarasDisponibles;
+
+  static Future<void> precargarCamaras() async {
+    try {
+      await _obtenerCamaras();
+    } catch (_) {
+      // La inicialización real mostrará el mensaje correspondiente si falla.
+    }
+  }
+
   CameraController? _cameraController;
   bool _cargando = true;
   bool _capturando = false;
+  bool _inicializando = false;
+  bool _liberando = false;
   String? _mensajeError;
+  final List<XFile> _capturas = <XFile>[];
 
   @override
   void initState() {
@@ -50,12 +74,18 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Capturar documento'),
+        title: Text(widget.titulo),
         actions: <Widget>[
           IconButton(
-            onPressed: _cargando ? null : () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close_rounded),
-            tooltip: 'Cerrar cámara',
+            onPressed: _cargando ? null : _finalizarCapturas,
+            icon: Icon(
+              widget.permitirVarias
+                  ? Icons.check_rounded
+                  : Icons.close_rounded,
+            ),
+            tooltip: widget.permitirVarias
+                ? 'Terminar capturas'
+                : 'Cerrar cámara',
           ),
         ],
       ),
@@ -110,6 +140,14 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
             style: TextStyle(color: Colors.white70),
             textAlign: TextAlign.center,
           ),
+          if (widget.permitirVarias) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              'Páginas capturadas: ${_capturas.length}. Puedes continuar o finalizar.',
+              style: const TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 16),
           GestureDetector(
             onTap: puedeCapturar ? _capturarImagen : null,
@@ -135,7 +173,14 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
   }
 
   Future<void> _inicializarCamara() async {
-    if (!mounted || _cameraController != null) return;
+    if (!mounted ||
+        _cameraController != null ||
+        _inicializando ||
+        _liberando) {
+      return;
+    }
+
+    _inicializando = true;
 
     setState(() {
       _cargando = true;
@@ -143,7 +188,7 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
     });
 
     try {
-      final cameras = await availableCameras();
+      final cameras = await _obtenerCamaras();
       if (cameras.isEmpty) {
         throw CameraException('no_camera', 'No se encontró una cámara.');
       }
@@ -154,7 +199,9 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
       );
       final controller = CameraController(
         camaraTrasera,
-        ResolutionPreset.high,
+        // Medium abre la cámara más rápido y sigue siendo suficiente para
+        // capturar documentos que luego serán recortados y convertidos a PDF.
+        ResolutionPreset.medium,
         enableAudio: false,
       );
 
@@ -178,6 +225,22 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
         _cargando = false;
         _mensajeError = 'No se pudo inicializar la cámara: $error';
       });
+    } finally {
+      _inicializando = false;
+    }
+  }
+
+  static Future<List<CameraDescription>> _obtenerCamaras() async {
+    final cache = _camarasDisponibles;
+    if (cache != null) return cache;
+
+    final consulta = availableCameras();
+    _camarasDisponibles = consulta;
+    try {
+      return await consulta;
+    } catch (_) {
+      _camarasDisponibles = null;
+      rethrow;
     }
   }
 
@@ -193,7 +256,16 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
     setState(() => _capturando = true);
     try {
       final imagen = await controller.takePicture();
-      if (mounted) Navigator.of(context).pop(imagen);
+      if (!mounted) return;
+
+      if (widget.permitirVarias) {
+        setState(() {
+          _capturas.add(imagen);
+          _capturando = false;
+        });
+      } else {
+        Navigator.of(context).pop(imagen);
+      }
     } on CameraException catch (error) {
       if (mounted) {
         setState(() {
@@ -211,10 +283,30 @@ class _CameraCaptureViewState extends State<CameraCaptureView>
     }
   }
 
+  void _finalizarCapturas() {
+    if (widget.permitirVarias) {
+      if (_capturas.isEmpty) {
+        Navigator.of(context).pop(<XFile>[]);
+      } else {
+        Navigator.of(context).pop(List<XFile>.of(_capturas));
+      }
+      return;
+    }
+
+    Navigator.of(context).pop();
+  }
+
   Future<void> _liberarCamara() async {
+    if (_liberando) return;
+
+    _liberando = true;
     final controller = _cameraController;
     _cameraController = null;
-    await controller?.dispose();
+    try {
+      await controller?.dispose();
+    } finally {
+      _liberando = false;
+    }
   }
 
   String _mensajeCamara(CameraException error) {

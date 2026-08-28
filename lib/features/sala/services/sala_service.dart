@@ -46,13 +46,21 @@ class SalaService {
   Future<Map<String, dynamic>> registrarDocumento({
     required Sala sala,
     required File archivo,
+    String tipoArchivo = 'imagen',
+    List<Map<String, double>>? poligono,
     String? nombrePersonalizado,
+    String? lotePdfId,
+    String? nombrePdf,
   }) {
     return apiClient.uploadFile(
       path: 'salas/${sala.salaId}/documentos',
       file: archivo,
       sessionToken: sala.token,
+      tipoArchivo: tipoArchivo,
+      poligono: poligono,
       personalizedName: nombrePersonalizado,
+      lotePdfId: lotePdfId,
+      nombrePdf: nombrePdf,
     );
   }
 

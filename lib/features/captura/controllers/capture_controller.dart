@@ -20,6 +20,9 @@ class CaptureController extends ChangeNotifier {
 
   List<DocumentoCapturado> get documentos => List.unmodifiable(_documentos);
 
+  TipoArchivo? get tipoArchivoActual =>
+      _documentos.isEmpty ? null : _documentos.first.tipoArchivo;
+
   Future<void> seleccionarImagen() =>
       _seleccionarImagenYReconectar(ImageSource.gallery);
 
@@ -41,6 +44,38 @@ class CaptureController extends ChangeNotifier {
 
   void eliminarDocumento(DocumentoCapturado documento) {
     _documentos.remove(documento);
+    notifyListeners();
+  }
+
+  void eliminarPaginasPdf() {
+    _documentos.removeWhere(
+      (documento) => documento.tipoArchivo == TipoArchivo.pdf,
+    );
+    notifyListeners();
+  }
+
+  void eliminarLotePdf(String lotePdfId) {
+    _documentos.removeWhere(
+      (documento) => documento.lotePdfId == lotePdfId,
+    );
+    notifyListeners();
+  }
+
+  void agregarDocumentos(List<DocumentoCapturado> documentos) {
+    if (documentos.isEmpty) return;
+
+    final tipoArchivo = documentos.first.tipoArchivo;
+    final todosMismoTipo = documentos.every(
+      (documento) => documento.tipoArchivo == tipoArchivo,
+    );
+    if (!todosMismoTipo) {
+      mensajeError = 'El lote recibido contiene tipos de archivo mezclados.';
+      notifyListeners();
+      return;
+    }
+
+    _documentos.addAll(documentos);
+    mensajeError = null;
     notifyListeners();
   }
 
@@ -72,7 +107,13 @@ class CaptureController extends ChangeNotifier {
         try {
           await salaController.enviarDocumento(
             documento.archivo,
+            tipoArchivo: documento.tipoArchivo.valor,
+            poligono: documento.poligono
+                .map((punto) => punto.toJson())
+                .toList(),
             nombrePersonalizado: documento.nombre,
+            lotePdfId: documento.lotePdfId,
+            nombrePdf: documento.nombrePdf,
           );
           documento.estado = EstadoDocumento.enviado;
           documento.mensajeError = null;
@@ -121,16 +162,29 @@ class CaptureController extends ChangeNotifier {
     }
   }
 
-  void agregarImagen(XFile imagen) {
+  void agregarImagen(
+    XFile imagen, {
+    TipoArchivo tipoArchivo = TipoArchivo.imagen,
+    List<PuntoPoligono> poligono = const <PuntoPoligono>[],
+  }) {
     final archivo = File(imagen.path);
     _documentos.add(
-      DocumentoCapturado(archivo: archivo, nombre: _crearNombre(archivo)),
+      DocumentoCapturado(
+        archivo: archivo,
+        nombre: _crearNombre(),
+        tipoArchivo: tipoArchivo,
+        poligono: poligono,
+      ),
     );
     mensajeError = null;
     notifyListeners();
   }
 
-  String _crearNombre(File archivo) {
+  bool puedeAgregarTipo(TipoArchivo _) {
+    return true;
+  }
+
+  String _crearNombre() {
     final timestamp = DateTime.now().microsecondsSinceEpoch;
     return 'documento_$timestamp.jpg';
   }
